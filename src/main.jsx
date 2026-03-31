@@ -5,6 +5,7 @@ import { Buffer } from 'buffer'
 import './index.css'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SnackbarProvider } from 'notistack'
+import { GoogleOAuthProvider } from '@react-oauth/google'
 
 window.Buffer = Buffer; // Important for the encryption to work!
 
@@ -18,12 +19,17 @@ const queryClient = new QueryClient({
   },
 })
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+if (!googleClientId) {
+  console.warn('VITE_GOOGLE_CLIENT_ID is missing; Google login will not work until it is configured.')
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SnackbarProvider maxSnack={3} autoHideDuration={3000} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+  <QueryClientProvider client={queryClient}>
+    <SnackbarProvider maxSnack={3} autoHideDuration={3000} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+      <GoogleOAuthProvider clientId={googleClientId ?? ''}>
         <App />
-      </SnackbarProvider>
-    </QueryClientProvider>
-  </React.StrictMode>,
+      </GoogleOAuthProvider>
+    </SnackbarProvider>
+  </QueryClientProvider>,
 )

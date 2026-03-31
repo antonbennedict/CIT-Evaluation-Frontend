@@ -71,6 +71,7 @@ const Login = ({ onLogin }) => {
       
       onLogin('ADMIN', 'admin@system', token);
     } catch (err) {
+      sessionStorage.removeItem('adminToken');
       // Check if it's a 401 (Invalid Credentials) or something else
       if (err.response && err.response.status === 401) {
         setError("Invalid credentials. Access denied.");

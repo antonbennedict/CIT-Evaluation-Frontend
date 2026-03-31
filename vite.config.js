@@ -2,18 +2,33 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react' // Fixed the name here!
 
 // https://vitejs.dev/config/
+const BACKEND_ORIGIN = 'http://localhost:8080';
+const DEV_SERVER_ORIGIN = 'http://localhost:5173';
+
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: BACKEND_ORIGIN,
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/api/, '/api'),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('X-Requested-With', 'XMLHttpRequest');
+          });
+          proxy.on('proxyRes', (proxyRes) => {
+            const redirect = proxyRes.headers.location;
+            if (redirect && redirect.startsWith(BACKEND_ORIGIN)) {
+              proxyRes.headers.location = redirect.replace(BACKEND_ORIGIN, DEV_SERVER_ORIGIN);
+            }
+          });
+        },
       },
     },
   },
   define: {
     // This is the "Magic Fix" for using 'Buffer' in Vite/Browser
-    global: 'window', 
+    global: 'window',
   },
 })

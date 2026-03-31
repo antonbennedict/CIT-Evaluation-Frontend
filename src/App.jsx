@@ -1,156 +1,239 @@
-import React, { useState } from 'react';
-import { GoogleOAuthProvider } from '@react-oauth/google';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ThemeProvider, createTheme, CssBaseline,
-  Box, AppBar, Toolbar, Typography, Button, Container, Chip, Avatar
+  Avatar,
+  Box,
+  Chip,
+  Container,
+  IconButton,
+  Paper,
+  Stack,
+  Tooltip,
+  Typography,
 } from '@mui/material';
+import CssBaseline from '@mui/material/CssBaseline';
+import LogoutIcon from '@mui/icons-material/Logout';
+import { createTheme, responsiveFontSizes, ThemeProvider } from '@mui/material/styles';
 import Login from './Login';
-import EvaluationForm from './EvaluationForm';
-import FacultyDashboard from './FacultyDashboard';
 import AdminDashboard from './AdminDashboard';
+import FacultyDashboard from './FacultyDashboard';
+import EvaluationForm from './EvaluationForm';
 
-const theme = createTheme({
+const brandColors = {
+  primary: '#0c4a8a',
+  secondary: '#d97706',
+  success: '#0f766e',
+  error: '#dc2626',
+  background: '#f3f7fb',
+  paper: '#ffffff',
+  border: '#e2e8f0',
+  textPrimary: '#102a43',
+  textSecondary: '#486581',
+  muted: '#64748b',
+};
+
+const baseTheme = createTheme({
   palette: {
     mode: 'light',
-    primary: { main: '#0c4a8a' },
-    secondary: { main: '#d97706' },
-    background: { default: '#f3f7fb', paper: '#ffffff' },
-    success: { main: '#0f766e' },
-    text: { primary: '#102a43', secondary: '#486581' }
+    primary: { main: brandColors.primary },
+    secondary: { main: brandColors.secondary },
+    success: { main: brandColors.success },
+    error: { main: brandColors.error },
+    background: { default: brandColors.background, paper: brandColors.paper },
+    text: { primary: brandColors.textPrimary, secondary: brandColors.textSecondary },
   },
   typography: {
     fontFamily: '"Plus Jakarta Sans", "Segoe UI", sans-serif',
-    h4: { fontWeight: 800, letterSpacing: '-0.02em' },
-    h5: { fontWeight: 750 },
-    h6: { fontWeight: 700 }
+    h1: { fontSize: '3rem', fontWeight: 800, lineHeight: 1.2 },
+    h2: { fontSize: '2.5rem', fontWeight: 800, lineHeight: 1.2 },
+    h3: { fontSize: '2rem', fontWeight: 800, lineHeight: 1.2 },
+    h4: { fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' },
+    h5: { fontSize: '1.5rem', fontWeight: 750 },
+    h6: { fontSize: '1.25rem', fontWeight: 700 },
+    body1: { fontSize: '1rem', lineHeight: 1.6 },
+    body2: { fontSize: '0.9rem', lineHeight: 1.5, color: brandColors.textSecondary },
+    button: { fontWeight: 700, textTransform: 'none' },
+    caption: { fontSize: '0.75rem', color: brandColors.muted },
+    overline: { fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' },
   },
-  shape: {
-    borderRadius: 14
-  },
+  spacing: 8,
+  shape: { borderRadius: 12 },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          backgroundColor: brandColors.background,
+          color: brandColors.textPrimary,
+          margin: 0,
+          fontSmooth: 'antialiased',
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         root: {
-          border: '1px solid #d9e2ec',
-          boxShadow: '0 16px 35px rgba(16, 42, 67, 0.08)'
-        }
-      }
+          border: `1px solid ${brandColors.border}`,
+          boxShadow: '0 24px 45px rgba(15, 23, 42, 0.08)',
+          borderRadius: 16,
+        },
+      },
     },
     MuiButton: {
-      defaultProps: {
-        disableElevation: true
-      },
+      defaultProps: { disableElevation: true },
       styleOverrides: {
         root: {
-          textTransform: 'none',
+          borderRadius: 10,
           fontWeight: 700,
-          borderRadius: 12
-        }
-      }
-    }
-  }
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          backgroundColor: brandColors.paper,
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          fontWeight: 700,
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 16,
+          border: `1px solid ${brandColors.border}`,
+        },
+      },
+    },
+  },
 });
 
-function App() {
-  // user: { role, email, token? }
-  // The token is only set for ADMIN logins and kept in React state (not localStorage)
-  const [user, setUser] = useState(null);
+const appTheme = responsiveFontSizes(baseTheme);
 
-  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "412778302941-hdsq9o9c3j4de2af3vbcsrfh6647v7c2.apps.googleusercontent.com";
+const createEmptySession = () => ({ role: null, email: '', token: '', avatar: '' });
 
-  const handleLogin = (role, email, token = null, picture = null) => {
-    setUser({ role, email, token, picture });
+const getStoredSession = () => {
+  if (typeof window === 'undefined') {
+    return createEmptySession();
+  }
+
+  const stored = window.sessionStorage.getItem('citEvalSession');
+  if (!stored) return createEmptySession();
+
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return createEmptySession();
+  }
+};
+
+const App = () => {
+  const [session, setSession] = useState(() => getStoredSession());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (session.role) {
+      window.sessionStorage.setItem('citEvalSession', JSON.stringify(session));
+    } else {
+      window.sessionStorage.removeItem('citEvalSession');
+    }
+  }, [session]);
+
+  const handleLogin = useCallback((role, email, token, avatar) => {
+    if (typeof window !== 'undefined' && role !== 'ADMIN') {
+      window.sessionStorage.removeItem('adminToken');
+    }
+    setSession({ role, email, token: token || '', avatar: avatar || '' });
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('adminToken');
+    }
+    setSession(createEmptySession());
+  }, []);
+
+  const renderContent = () => {
+    switch (session.role) {
+      case 'ADMIN':
+        return <AdminDashboard adminToken={session.token} />;
+      case 'FACULTY':
+        return <FacultyDashboard facultyEmail={session.email} />;
+      case 'STUDENT':
+        return <EvaluationForm studentEmail={session.email} />;
+      default:
+        return <Login onLogin={handleLogin} />;
+    }
   };
 
-  const handleLogout = () => setUser(null);
+  const sessionTitle =
+    {
+      ADMIN: 'Administrator Control Center',
+      FACULTY: 'Faculty Portal',
+      STUDENT: 'Student Evaluation Hub',
+    }[session.role] ?? 'CIT Evaluation';
 
-  const roleChipColor = user?.role === 'ADMIN'
-    ? 'secondary'
-    : user?.role === 'FACULTY'
-      ? 'success'
-      : 'primary';
+  const isAuthenticated = Boolean(session.role);
 
   return (
-    <GoogleOAuthProvider clientId={CLIENT_ID}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {user && (
-          <AppBar
-            position="sticky"
-            elevation={0}
-            color="transparent"
-            sx={{
-              borderBottom: '1px solid #d9e2ec',
-              backdropFilter: 'blur(6px)',
-              backgroundColor: 'rgba(255,255,255,0.78)'
-            }}
-          >
-            <Toolbar sx={{ minHeight: 74 }}>
-              <Typography variant="h6" sx={{ flexGrow: 1, color: 'text.primary' }}>
-                UA CIT-EVAL
-              </Typography>
-              <Box sx={{ textAlign: 'right', mr: 2, display: { xs: 'none', sm: 'block' } }}>
-                <Typography variant="caption" display="block" sx={{ lineHeight: 1, color: 'text.secondary' }}>
-                  Logged in as:
-                </Typography>
-                <Typography variant="body2" fontWeight="bold" sx={{ color: 'text.primary' }}>
-                  {user.email}
-                </Typography>
-              </Box>
-              
-              <Avatar 
-                src={user.picture} 
-                sx={{ 
-                  width: 38, 
-                  height: 38, 
-                  mr: 2, 
-                  border: '2px solid #d9e2ec'
-                }} 
-              >
-                {user.email.charAt(0).toUpperCase()}
-              </Avatar>
-
-              <Chip
-                label={user.role}
-                color={roleChipColor}
-                size="small"
-                sx={{ mr: 1.5, fontWeight: 800 }}
-              />
-              <Button color="primary" onClick={handleLogout} variant="outlined" size="small">
-                Logout
-              </Button>
-            </Toolbar>
-          </AppBar>
-        )}
-
-        <Box
-          sx={{
-            minHeight: '100vh',
-            py: { xs: 3, md: 5 },
-            background:
-              'radial-gradient(circle at 8% 10%, rgba(12, 74, 138, 0.12), transparent 38%), radial-gradient(circle at 92% 0%, rgba(217, 119, 6, 0.14), transparent 28%)'
-          }}
-        >
-          {!user ? (
-            <Login onLogin={handleLogin} />
-          ) : (
+    <ThemeProvider theme={appTheme}>
+      <CssBaseline />
+      <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', py: { xs: 2, md: 4 } }}>
+        {isAuthenticated ? (
+          <>
             <Container maxWidth="lg">
-              {user.role === 'STUDENT' && (
-                <EvaluationForm studentEmail={user.email} />
-              )}
-              {user.role === 'FACULTY' && (
-                <FacultyDashboard facultyEmail={user.email} />
-              )}
-              {user.role === 'ADMIN' && (
-                // ✅ Pass the session token so AdminDashboard can authorize its requests
-                <AdminDashboard adminToken={user.token} />
-              )}
+              <Paper
+                elevation={0}
+                sx={{
+                  mb: 3,
+                  p: { xs: 3, md: 4 },
+                  borderRadius: 3,
+                  background: 'linear-gradient(138deg, rgba(12, 74, 138, 0.15), rgba(217, 119, 6, 0.12))',
+                  border: '1px solid rgba(12, 74, 138, 0.25)',
+                }}
+              >
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Avatar src={session.avatar} sx={{ bgcolor: 'primary.main', width: 56, height: 56, fontWeight: 700 }}>
+                      {(session.email && session.email[0]?.toUpperCase()) || session.role?.charAt(0) || 'C'}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" letterSpacing={1.2}>
+                        Active Session
+                      </Typography>
+                      <Typography variant="h5" fontWeight={800} color="primary.main">
+                        {sessionTitle}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ opacity: 0.85 }}>
+                        {session.email || 'No email provided'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Chip label={session.role} variant="outlined" color="secondary" sx={{ fontWeight: 700 }} />
+                    <Tooltip title="Sign out">
+                      <IconButton onClick={handleLogout} size="large" sx={{ bgcolor: 'background.paper' }}>
+                        <LogoutIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+              </Paper>
             </Container>
-          )}
-        </Box>
-      </ThemeProvider>
-    </GoogleOAuthProvider>
+            <Container maxWidth="lg">{renderContent()}</Container>
+          </>
+        ) : (
+          <Box>{renderContent()}</Box>
+        )}
+      </Box>
+    </ThemeProvider>
   );
-}
+};
 
 export default App;
