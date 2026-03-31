@@ -66,6 +66,11 @@ export const fetchCriteria = async () => {
   return ensureArrayResponse(data);
 };
 
+export const fetchUsers = async () => {
+  const { data } = await apiClient.get('/api/admin/users');
+  return ensureArrayResponse(data);
+};
+
 export const createCriterion = async (payload) => {
   const { data } = await apiClient.post('/api/admin/criteria', { title: payload.title });
   return data;

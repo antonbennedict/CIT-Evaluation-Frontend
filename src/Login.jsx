@@ -8,7 +8,7 @@ import {
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import SchoolIcon from '@mui/icons-material/School';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import axios from 'axios';
+import { apiClient } from './shared/api/client';
 
 const Login = ({ onLogin }) => {
   const [adminView, setAdminView] = useState(false);
@@ -17,14 +17,37 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const onSuccess = (res) => {
+  const handleGoogleSuccess = async (decodedToken, userRole) => {
+    const userData = {
+      email: decodedToken.email,
+      name: decodedToken.name,
+      oauthProvider: 'google',
+      oauthSubject: decodedToken.sub, // ✅ Add this
+      role: userRole
+    };
+
+    try {
+      await apiClient.post('/api/public/sync-user', userData);
+      return true;
+    } catch (_err) {
+      setError("Unable to sync user profile. Please try again.");
+      return false;
+    }
+  };
+
+  const onSuccess = async (res) => {
     const decoded = jwtDecode(res.credential);
     if (!decoded.email.endsWith("@ua.edu.ph")) {
       setError("Unauthorized: Please use your official @ua.edu.ph account.");
       return;
     }
     const isFaculty = decoded.email.startsWith('faculty.') || decoded.email.startsWith('prof.');
-    onLogin(isFaculty ? 'FACULTY' : 'STUDENT', decoded.email);
+    const role = isFaculty ? 'FACULTY' : 'STUDENT';
+    const synced = await handleGoogleSuccess(decoded, role);
+    if (!synced) return;
+    
+    // Pass the picture URL to the onLogin function
+    onLogin(role, decoded.email, null, decoded.picture);
   };
 
   const handleAdminAuth = async () => {
@@ -37,7 +60,7 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     try {
       // ✅ FIXED: Sending the exact keys the Java 'record LoginRequest' expects
-      const res = await axios.post('http://localhost:8080/api/auth/admin-login', {
+      const res = await apiClient.post('/api/auth/admin-login', {
         username: adminCreds.username,
         password: adminCreds.password
       });
@@ -101,15 +124,25 @@ const Login = ({ onLogin }) => {
                 onError={() => setError("Google Sign-In failed. Please try again.")}
               />
             </Box>
-            <Divider sx={{ my: 2 }}>Administrative Access</Divider>
-            <Button
-              startIcon={<AdminPanelSettingsIcon />}
-              size="medium"
-              variant="outlined"
-              onClick={() => { setAdminView(true); setError(''); }}
-            >
-              Administrator Portal
-            </Button>
+
+            <Divider sx={{ my: 2 }}>Developer Shortcuts</Divider>
+            <Stack spacing={1}>
+              <Button
+                variant="outlined"
+                color="success"
+                onClick={() => onLogin('FACULTY', 'alonzo@ua.edu.ph')}
+              >
+                Bypass: View Faculty Dashboard (Alonzo)
+              </Button>
+              <Button
+                startIcon={<AdminPanelSettingsIcon />}
+                size="medium"
+                variant="outlined"
+                onClick={() => { setAdminView(true); setError(''); }}
+              >
+                Administrator Portal
+              </Button>
+            </Stack>
           </Box>
         ) : (
           <Box sx={{ textAlign: 'left' }}>

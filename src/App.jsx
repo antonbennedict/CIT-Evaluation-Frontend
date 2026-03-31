@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import {
   ThemeProvider, createTheme, CssBaseline,
-  Box, AppBar, Toolbar, Typography, Button, Container, Chip
+  Box, AppBar, Toolbar, Typography, Button, Container, Chip, Avatar
 } from '@mui/material';
 import Login from './Login';
 import EvaluationForm from './EvaluationForm';
@@ -58,8 +58,8 @@ function App() {
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "412778302941-hdsq9o9c3j4de2af3vbcsrfh6647v7c2.apps.googleusercontent.com";
 
-  const handleLogin = (role, email, token = null) => {
-    setUser({ role, email, token });
+  const handleLogin = (role, email, token = null, picture = null) => {
+    setUser({ role, email, token, picture });
   };
 
   const handleLogout = () => setUser(null);
@@ -97,6 +97,19 @@ function App() {
                   {user.email}
                 </Typography>
               </Box>
+              
+              <Avatar 
+                src={user.picture} 
+                sx={{ 
+                  width: 38, 
+                  height: 38, 
+                  mr: 2, 
+                  border: '2px solid #d9e2ec'
+                }} 
+              >
+                {user.email.charAt(0).toUpperCase()}
+              </Avatar>
+
               <Chip
                 label={user.role}
                 color={roleChipColor}
