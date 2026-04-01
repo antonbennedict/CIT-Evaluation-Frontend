@@ -39,7 +39,8 @@ export const createProfessor = async (payload) => {
   const requestBody = {
     name: payload.name,
     email: payload.email,
-    department: payload.department,
+    role: payload.role,
+    assignedSections: payload.assignedSections,
     isActive: payload.isActive ?? true,
   };
   const { data } = await apiClient.post('/api/admin/professors', requestBody);
@@ -50,7 +51,8 @@ export const updateProfessor = async (id, payload) => {
   const requestBody = {
     name: payload.name,
     email: payload.email,
-    department: payload.department,
+    role: payload.role,
+    assignedSections: payload.assignedSections,
     isActive: payload.isActive ?? true,
   };
   const { data } = await apiClient.put(`/api/admin/professors/${id}`, requestBody);

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,11 +6,14 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Fade,
   Paper,
+  Skeleton,
   Stack,
   Tab,
   Tabs,
   Typography,
+  Zoom,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import LockIcon from '@mui/icons-material/Lock';
@@ -26,20 +29,31 @@ import EvaluationTable from './components/admin/EvaluationTable';
 import ProfessorManager from './components/admin/ProfessorManager';
 import CriteriaManager from './components/admin/CriteriaManager';
 
+const AdminOverview = lazy(() => import('./components/admin/AdminOverview'));
+
+const TAB_INDEX = {
+  OVERVIEW: 0,
+  EVALUATIONS: 1,
+  PROFESSORS: 2,
+  CRITERIA: 3,
+};
+
 const AdminDashboard = ({ adminToken }) => {
   const token = adminToken || sessionStorage.getItem('adminToken');
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(TAB_INDEX.OVERVIEW);
   const [error, setError] = useState('');
 
   const {
     data: evaluations = [],
     isLoading: evaluationsLoading,
+    isError: evaluationsError,
     refetch: refetchEvaluations,
   } = useQuery({
     queryKey: ['admin-evaluations'],
     queryFn: fetchEvaluationsAdmin,
     enabled: Boolean(token),
+    retry: 1,
     onError: (err) => setError(getApiErrorMessage(err, 'Unable to load evaluations.')),
   });
 
@@ -51,8 +65,8 @@ const AdminDashboard = ({ adminToken }) => {
   } = useQuery({
     queryKey: ['admin-professors'],
     queryFn: fetchProfessors,
-    enabled: Boolean(token), // Load immediately for stats
-    retry: false,
+    enabled: Boolean(token),
+    retry: 1,
     onError: (err) => setError(getApiErrorMessage(err, 'Unable to load professors.')),
   });
 
@@ -64,8 +78,8 @@ const AdminDashboard = ({ adminToken }) => {
   } = useQuery({
     queryKey: ['admin-criteria'],
     queryFn: fetchCriteria,
-    enabled: Boolean(token), // Load immediately for stats
-    retry: false,
+    enabled: Boolean(token),
+    retry: 1,
     onError: (err) => setError(getApiErrorMessage(err, 'Unable to load criteria.')),
   });
 
@@ -118,22 +132,43 @@ const AdminDashboard = ({ adminToken }) => {
     boxShadow: '0 32px 60px rgba(15, 23, 42, 0.08)',
   };
 
-  const isRefreshing = activeTab === 0 ? evaluationsLoading : activeTab === 1 ? professorsLoading : criteriaLoading;
+  const isRefreshing =
+    activeTab === TAB_INDEX.OVERVIEW
+      ? evaluationsLoading || professorsLoading || criteriaLoading
+      : activeTab === TAB_INDEX.EVALUATIONS
+      ? evaluationsLoading
+      : activeTab === TAB_INDEX.PROFESSORS
+      ? professorsLoading
+      : criteriaLoading;
+
   const refreshButtonLabel = isRefreshing ? 'Refreshing...' : 'Refresh';
+  const isBootstrapping = evaluationsLoading && professorsLoading && criteriaLoading;
 
   const handleRefresh = () => {
-    if (activeTab === 0) return refetchEvaluations();
-    if (activeTab === 1) return refetchProfessors();
-    if (activeTab === 2) return refetchCriteria();
+    if (activeTab === TAB_INDEX.OVERVIEW) {
+      refetchEvaluations();
+      refetchProfessors();
+      refetchCriteria();
+      return;
+    }
+    if (activeTab === TAB_INDEX.EVALUATIONS) return refetchEvaluations();
+    if (activeTab === TAB_INDEX.PROFESSORS) return refetchProfessors();
+    if (activeTab === TAB_INDEX.CRITERIA) return refetchCriteria();
   };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 3 }}>
       <Paper elevation={0} sx={{ p: { xs: 3, md: 4 }, borderRadius: 4, border: '1px solid #dfe3ec' }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 3 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+          spacing={2}
+          sx={{ mb: 3 }}
+        >
           <Box>
             <Typography variant="h4" fontWeight={800} color="primary.main">Admin Control Center</Typography>
-            <Typography variant="body2" color="text.secondary">Manage encrypted evaluations, professors, and criteria.</Typography>
+            <Typography variant="body2" color="text.secondary">Manage encrypted evaluations, professors, criteria, and analytics.</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <Chip icon={<LockIcon />} label="Encrypted by default" color="success" variant="outlined" />
@@ -149,74 +184,120 @@ const AdminDashboard = ({ adminToken }) => {
           </Stack>
         </Stack>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} aria-live="polite">
+            We hit a temporary loading issue. {error} Please tap Refresh to try again.
+          </Alert>
+        )}
 
-        <Stack spacing={3} sx={{ mb: 3 }}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            flexWrap="wrap"
-            justifyContent="space-between"
-          >
-            {summaryStats.map((stat) => (
-              <Paper key={stat.label} elevation={0} sx={{ ...cardSurfaceSx, flex: '1 1 180px', minWidth: 180, p: 2.25 }}>
-                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.12em' }}>
-                  {stat.label}
-                </Typography>
-                <Typography variant="h4" fontWeight={800} sx={{ mt: 0.25 }}>
-                  {stat.value}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {stat.detail}
-                </Typography>
-              </Paper>
-            ))}
+        <Fade in timeout={260}>
+          <Stack spacing={3} sx={{ mb: 3 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" justifyContent="space-between">
+              {isBootstrapping
+                ? [1, 2, 3].map((placeholder) => (
+                    <Paper key={placeholder} elevation={0} sx={{ ...cardSurfaceSx, flex: '1 1 180px', minWidth: 180, p: 2.25 }}>
+                      <Skeleton variant="text" width="60%" height={18} />
+                      <Skeleton variant="text" width="35%" height={44} />
+                      <Skeleton variant="text" width="70%" height={18} />
+                    </Paper>
+                  ))
+                : summaryStats.map((stat) => (
+                    <Paper key={stat.label} elevation={0} sx={{ ...cardSurfaceSx, flex: '1 1 180px', minWidth: 180, p: 2.25 }}>
+                      <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.12em' }}>
+                        {stat.label}
+                      </Typography>
+                      <Typography variant="h4" fontWeight={800} sx={{ mt: 0.25 }}>
+                        {stat.value}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {stat.detail}
+                      </Typography>
+                    </Paper>
+                  ))}
+            </Stack>
+
+            <Tabs
+              value={activeTab}
+              onChange={(_event, value) => setActiveTab(value)}
+              variant="scrollable"
+              allowScrollButtonsMobile
+              TabIndicatorProps={{ sx: { backgroundColor: 'secondary.main', height: 3, borderRadius: 2 } }}
+              sx={{
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                },
+              }}
+            >
+              <Tab label="Overall" />
+              <Tab label="Evaluations" />
+              <Tab label="Professors" />
+              <Tab label="Criteria" />
+            </Tabs>
           </Stack>
-          <Tabs
-            value={activeTab}
-            onChange={(_, value) => setActiveTab(value)}
-            TabIndicatorProps={{ sx: { backgroundColor: 'secondary.main', height: 3, borderRadius: 2 } }}
-            sx={{
-              '& .MuiTab-root': {
-                textTransform: 'none',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-              },
-            }}
+        </Fade>
+
+        {activeTab === TAB_INDEX.OVERVIEW && (
+          <Suspense
+            fallback={
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
+                <Skeleton variant="text" width="30%" height={30} />
+                <Skeleton variant="rounded" height={280} sx={{ mt: 1.5 }} />
+              </Paper>
+            }
           >
-            <Tab label="Evaluations" />
-            <Tab label="Professors" />
-            <Tab label="Criteria" />
-          </Tabs>
-        </Stack>
-
-        {activeTab === 0 && (
-          <EvaluationTable
-            evaluations={evaluationRows}
-            loading={evaluationsLoading}
-            sharedGridSx={sharedGridSx}
-            cardSurfaceSx={cardSurfaceSx}
-          />
+            <AdminOverview
+              evaluations={evaluationRows}
+              criteria={criteriaRows}
+              professors={professorRows}
+            />
+          </Suspense>
         )}
 
-        {activeTab === 1 && (
-          <ProfessorManager
-            professors={professorRows}
-            loading={professorsLoading}
-            error={professorsError}
-            sharedGridSx={sharedGridSx}
-            cardSurfaceSx={cardSurfaceSx}
-          />
+        {activeTab === TAB_INDEX.EVALUATIONS && (
+          <Zoom in timeout={220}>
+            <Box>
+              <EvaluationTable
+                evaluations={evaluationRows}
+                loading={evaluationsLoading}
+                error={evaluationsError}
+                onRetry={refetchEvaluations}
+                sharedGridSx={sharedGridSx}
+                cardSurfaceSx={cardSurfaceSx}
+              />
+            </Box>
+          </Zoom>
         )}
 
-        {activeTab === 2 && (
-          <CriteriaManager
-            criteria={criteriaRows}
-            loading={criteriaLoading}
-            error={criteriaError}
-            sharedGridSx={sharedGridSx}
-            cardSurfaceSx={cardSurfaceSx}
-          />
+        {activeTab === TAB_INDEX.PROFESSORS && (
+          <Zoom in timeout={220}>
+            <Box>
+              <ProfessorManager
+                professors={professorRows}
+                loading={professorsLoading}
+                error={professorsError}
+                onRetry={refetchProfessors}
+                sharedGridSx={sharedGridSx}
+                cardSurfaceSx={cardSurfaceSx}
+              />
+            </Box>
+          </Zoom>
+        )}
+
+        {activeTab === TAB_INDEX.CRITERIA && (
+          <Zoom in timeout={220}>
+            <Box>
+              <CriteriaManager
+                criteria={criteriaRows}
+                loading={criteriaLoading}
+                error={criteriaError}
+                onRetry={refetchCriteria}
+                sharedGridSx={sharedGridSx}
+                cardSurfaceSx={cardSurfaceSx}
+              />
+            </Box>
+          </Zoom>
         )}
       </Paper>
     </Container>

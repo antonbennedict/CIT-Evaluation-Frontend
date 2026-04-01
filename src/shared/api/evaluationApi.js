@@ -1,5 +1,12 @@
 import { apiClient } from './client';
 
+const ensureArrayResponse = (value) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return [];
+};
+
 export const DEFAULT_CRITERIA = [
   { id: 1, title: 'Quality of Teaching' },
   { id: 2, title: 'Punctuality' },
@@ -7,9 +14,10 @@ export const DEFAULT_CRITERIA = [
   { id: 4, title: 'Class Engagement' },
 ];
 
-export const fetchPublicProfessors = async () => {
-  const { data } = await apiClient.get('/api/public/professors');
-  return data;
+export const fetchPublicProfessors = async (section) => {
+  const params = section ? { section } : undefined;
+  const { data } = await apiClient.get('/api/public/professors', { params });
+  return ensureArrayResponse(data);
 };
 
 export const fetchPublicCriteria = async () => {

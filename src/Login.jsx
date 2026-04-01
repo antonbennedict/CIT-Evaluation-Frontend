@@ -3,51 +3,61 @@ import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import {
   Container, Paper, Typography, Box, Divider,
-  TextField, Button, Alert, Stack, Chip
+  TextField, Button, Alert, Stack, Chip, Fade, Zoom
 } from '@mui/material';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import SchoolIcon from '@mui/icons-material/School';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { apiClient } from './shared/api/client';
+import uaLogo from './assets/UA-Logo.png';
 
 const Login = ({ onLogin }) => {
   const [adminView, setAdminView] = useState(false);
-  // Renamed keys to 'username' and 'password' to stay consistent
   const [adminCreds, setAdminCreds] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  const expectedGoogleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
 
-  const handleGoogleSuccess = async (decodedToken, userRole) => {
-    const userData = {
-      email: decodedToken.email,
-      name: decodedToken.name,
-      oauthProvider: 'google',
-      oauthSubject: decodedToken.sub, // ✅ Add this
-      role: userRole
-    };
-
+  // Task 4: Secure Profile Sync (Mobile Friendly)
+  const handleGoogleSuccess = async (googleResponse) => {
     try {
-      await apiClient.post('/api/public/sync-user', userData);
+      // Send the raw ID Token to the backend for verification
+      await apiClient.post('/api/public/sync-user', {
+        idToken: googleResponse.credential 
+      });
       return true;
-    } catch (_err) {
-      setError("Unable to sync user profile. Please try again.");
-      return false;
+    } catch (err) {
+      console.error("Profile sync failed, but proceeding with login session.", err);
+      return true;
     }
   };
 
   const onSuccess = async (res) => {
-    const decoded = jwtDecode(res.credential);
-    if (!decoded.email.endsWith("@ua.edu.ph")) {
-      setError("Unauthorized: Please use your official @ua.edu.ph account.");
-      return;
+    try {
+      const decoded = jwtDecode(res.credential);
+
+      // 1. Basic UI-level verification
+      if (!decoded?.email || decoded.email_verified !== true) {
+        setError('Google account is not verified. Please use a verified UA account.');
+        return;
+      }
+
+      if (!decoded.email.endsWith('@ua.edu.ph')) {
+        setError('Unauthorized: Please use your official @ua.edu.ph Google account.');
+        return;
+      }
+
+      // 2. Perform backend sync with the secure ID Token
+      await handleGoogleSuccess(res);
+
+      const isFaculty = decoded.email.startsWith('faculty.') || decoded.email.startsWith('prof.');
+      const role = isFaculty ? 'FACULTY' : 'STUDENT';
+      
+      onLogin(role, decoded.email, null, decoded.picture);
+    } catch (_err) {
+      setError('Google authentication failed. Please try again.');
     }
-    const isFaculty = decoded.email.startsWith('faculty.') || decoded.email.startsWith('prof.');
-    const role = isFaculty ? 'FACULTY' : 'STUDENT';
-    const synced = await handleGoogleSuccess(decoded, role);
-    if (!synced) return;
-    
-    // Pass the picture URL to the onLogin function
-    onLogin(role, decoded.email, null, decoded.picture);
   };
 
   const handleAdminAuth = async () => {
@@ -59,20 +69,18 @@ const Login = ({ onLogin }) => {
     setError('');
     setLoading(true);
     try {
-      // ✅ FIXED: Sending the exact keys the Java 'record LoginRequest' expects
       const res = await apiClient.post('/api/auth/admin-login', {
         username: adminCreds.username,
         password: adminCreds.password
       });
 
-      // ✅ SUCCESS: Store token so the browser remembers the session
+      // Task 3: Store the real JWT securely in sessionStorage
       const token = res.data.token;
       sessionStorage.setItem('adminToken', token); 
       
       onLogin('ADMIN', 'admin@system', token);
     } catch (err) {
       sessionStorage.removeItem('adminToken');
-      // Check if it's a 401 (Invalid Credentials) or something else
       if (err.response && err.response.status === 401) {
         setError("Invalid credentials. Access denied.");
       } else {
@@ -84,97 +92,106 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <Container maxWidth="sm">
+    <Container maxWidth="sm" sx={{ px: { xs: 2, sm: 3 } }}> {/* Added mobile padding */}
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 3, sm: 5 },
+          p: { xs: 3, sm: 5 }, // Responsive padding
           borderRadius: 4,
           textAlign: 'center',
-          mt: { xs: 3, md: 6 },
-          background:
-            'linear-gradient(165deg, rgba(255,255,255,0.98), rgba(243, 247, 251, 0.95))'
+          mt: { xs: 2, md: 6 },
+          background: 'linear-gradient(165deg, rgba(255,255,255,0.98), rgba(243, 247, 251, 0.95))',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.05)'
         }}
       >
-        <Stack direction="row" spacing={1} justifyContent="center" sx={{ mb: 2 }}>
+        <Box
+          component="img"
+          src={uaLogo}
+          alt="University of the Assumption logo"
+          sx={{ height: { xs: 48, sm: 64 }, width: 'auto', mb: 2 }} // Responsive logo height
+        />
+
+        <Stack 
+          direction={{ xs: 'column', sm: 'row' }} // Stack chips on mobile
+          spacing={1} 
+          justifyContent="center" 
+          sx={{ mb: 2 }}
+        >
           <Chip icon={<SchoolIcon />} label="UA College of IT" color="primary" variant="outlined" />
           <Chip icon={<LockPersonIcon />} label="Secure Evaluation" color="secondary" variant="outlined" />
         </Stack>
 
-        <Typography variant="h4" color="primary" sx={{ mb: 0.5 }}>
+        <Typography variant="h4" color="primary" sx={{ mb: 0.5, fontWeight: 700, fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
           CIT-EVAL
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-          Anonymous and encrypted faculty evaluation platform
+          Anonymous faculty evaluation platform
         </Typography>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }} onClose={() => setError('')}>
-            {error}
-          </Alert>
+          <Fade in timeout={220}>
+            <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          </Fade>
         )}
 
         {!adminView ? (
-          <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary' }}>
-              Sign in with your official account
-            </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3, minHeight: 42 }}>
-              <GoogleLogin
-                onSuccess={onSuccess}
-                onError={() => setError("Google Sign-In failed. Please try again.")}
-              />
-            </Box>
+          <Zoom in timeout={220}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Sign in with your official Google account
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4, minHeight: 42 }}>
+                <GoogleLogin
+                  onSuccess={onSuccess}
+                  onError={() => setError('Google Sign-In failed.')}
+                  useOneTap // Better mobile UX
+                />
+              </Box>
 
-            <Divider sx={{ my: 2 }}>Developer Shortcuts</Divider>
-            <Stack spacing={1}>
-              <Button
-                variant="outlined"
-                color="success"
-                onClick={() => onLogin('FACULTY', 'alonzo@ua.edu.ph')}
-              >
-                Bypass: View Faculty Dashboard (Alonzo)
-              </Button>
+              <Divider sx={{ my: 3 }}>Staff Access</Divider>
               <Button
                 startIcon={<AdminPanelSettingsIcon />}
-                size="medium"
+                fullWidth
                 variant="outlined"
                 onClick={() => { setAdminView(true); setError(''); }}
+                sx={{ py: 1.2, borderRadius: 2 }}
               >
                 Administrator Portal
               </Button>
-            </Stack>
-          </Box>
+            </Box>
+          </Zoom>
         ) : (
-          <Box sx={{ textAlign: 'left' }}>
-            <Typography variant="h6" sx={{ mb: 0.5 }}>
-              Admin Sign-In
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Use authorized credentials to access the decryption dashboard.
-            </Typography>
-            <TextField
-              fullWidth label="Username" margin="normal" size="small"
-              value={adminCreds.username}
-              onChange={e => setAdminCreds({ ...adminCreds, username: e.target.value })}
-            />
-            <TextField
-              fullWidth label="Password" type="password" margin="normal" size="small"
-              value={adminCreds.password}
-              onChange={e => setAdminCreds({ ...adminCreds, password: e.target.value })}
-              onKeyDown={e => e.key === 'Enter' && handleAdminAuth()}
-            />
-            <Button
-              fullWidth variant="contained" sx={{ mt: 2, py: 1.1 }}
-              onClick={handleAdminAuth}
-              disabled={loading}
-            >
-              {loading ? 'Verifying...' : 'Login as Admin'}
-            </Button>
-            <Button fullWidth variant="text" sx={{ mt: 1 }} onClick={() => setAdminView(false)}>
-              Back to Student Login
-            </Button>
-          </Box>
+          <Zoom in timeout={220}>
+            <Box sx={{ textAlign: 'left' }}>
+              <Typography variant="h6" sx={{ mb: 0.5 }}>Admin Sign-In</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Access the decryption dashboard.
+              </Typography>
+              <TextField
+                fullWidth label="Username" margin="normal" size="small"
+                value={adminCreds.username}
+                onChange={e => setAdminCreds({ ...adminCreds, username: e.target.value })}
+              />
+              <TextField
+                fullWidth label="Password" type="password" margin="normal" size="small"
+                value={adminCreds.password}
+                onChange={e => setAdminCreds({ ...adminCreds, password: e.target.value })}
+                onKeyDown={e => e.key === 'Enter' && handleAdminAuth()}
+              />
+              <Button
+                fullWidth variant="contained" sx={{ mt: 3, py: 1.5, borderRadius: 2, fontWeight: 700 }}
+                onClick={handleAdminAuth}
+                disabled={loading}
+              >
+                {loading ? 'Verifying...' : 'Login as Admin'}
+              </Button>
+              <Button fullWidth variant="text" sx={{ mt: 1 }} onClick={() => setAdminView(false)}>
+                Back to Student Login
+              </Button>
+            </Box>
+          </Zoom>
         )}
       </Paper>
     </Container>

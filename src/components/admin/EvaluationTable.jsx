@@ -1,14 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { Box, Button, Paper } from '@mui/material';
+import { Box, Button, Paper, Skeleton } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useQueryClient } from '@tanstack/react-query';
 import { enqueueSnackbar } from 'notistack';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import LockIcon from '@mui/icons-material/Lock';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 import { decryptEvaluation } from '../../shared/api/adminApi';
 import { getApiErrorMessage } from '../../shared/api/client';
+import LoadStateCard from '../shared/LoadStateCard';
 
-const EvaluationTable = ({ evaluations, loading, sharedGridSx, cardSurfaceSx }) => {
+const computeMetricAverage = (scores = []) => {
+  if (!Array.isArray(scores) || scores.length === 0) return 0;
+  const total = scores.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
+  return total / scores.length;
+};
+
+const EvaluationTable = ({ evaluations, loading, error, onRetry, sharedGridSx, cardSurfaceSx }) => {
   const queryClient = useQueryClient();
   const [decryptingId, setDecryptingId] = useState(null);
   const [decryptedRows, setDecryptedRows] = useState({});
@@ -68,7 +76,12 @@ const EvaluationTable = ({ evaluations, loading, sharedGridSx, cardSurfaceSx }) 
            return fEmail || '—';
         }
       },
-      { field: 'rating', headerName: 'Rating', width: 90 },
+      {
+        field: 'performance',
+        headerName: 'Performance',
+        width: 110,
+        valueGetter: (_value, row) => computeMetricAverage(row.scores).toFixed(1),
+      },
       {
         field: 'ciphertext',
         headerName: 'Feedback',
@@ -121,6 +134,33 @@ const EvaluationTable = ({ evaluations, loading, sharedGridSx, cardSurfaceSx }) 
 
   return (
     <Paper elevation={0} sx={{ ...cardSurfaceSx, p: 2.5, borderColor: '#e2e8f0', mt: 1 }}>
+      {error && (
+        <Box sx={{ mb: 2 }}>
+          <LoadStateCard
+            icon={<InsightsOutlinedIcon sx={{ fontSize: 52 }} />}
+            title="We could not load encrypted feedback"
+            description="Please retry to continue reviewing submissions."
+            severity="error"
+            actionLabel="Try again"
+            onAction={onRetry}
+            minHeight={180}
+          />
+        </Box>
+      )}
+      {loading ? (
+        <Box sx={{ p: 1 }}>
+          <Skeleton variant="text" width="32%" height={32} />
+          <Skeleton variant="rounded" height={460} sx={{ mt: 1.5 }} />
+        </Box>
+      ) : evaluations.length === 0 ? (
+        <LoadStateCard
+          icon={<InsightsOutlinedIcon sx={{ fontSize: 58 }} />}
+          title="No submissions yet"
+          description="Student evaluations will appear here after secure submission."
+          actionLabel="Refresh"
+          onAction={onRetry}
+        />
+      ) : (
       <Box sx={{ height: 560, width: '100%' }}>
         <DataGrid
           rows={evaluations}
@@ -134,6 +174,7 @@ const EvaluationTable = ({ evaluations, loading, sharedGridSx, cardSurfaceSx }) 
           sx={sharedGridSx}
         />
       </Box>
+      )}
     </Paper>
   );
 };

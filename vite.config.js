@@ -7,6 +7,20 @@ const DEV_SERVER_ORIGIN = 'http://localhost:5173';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+          if (id.includes('@tanstack/react-query') || id.includes('axios')) return 'vendor-query';
+          if (id.includes('recharts') || id.includes('victory-vendor')) return 'vendor-charts';
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

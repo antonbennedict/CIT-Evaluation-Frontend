@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { lazy, Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import { apiClient } from './shared/api/client';
 import { decryptEvaluation } from './shared/api/adminApi';
 import {
@@ -17,15 +17,29 @@ import {
     Rating,
     Avatar
 } from '@mui/material';
+import Fade from '@mui/material/Fade';
+import Skeleton from '@mui/material/Skeleton';
+import Zoom from '@mui/material/Zoom';
 import LockIcon from '@mui/icons-material/Lock';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import SecurityIcon from '@mui/icons-material/Security';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import uaLogo from './assets/UA-Logo.png';
+import LoadStateCard from './components/shared/LoadStateCard';
 
-const FacultyDashboard = ({ facultyEmail }) => {
+const FacultyAnalyticsCharts = lazy(() => import('./components/faculty/FacultyAnalyticsCharts'));
+
+const computeMetricAverage = (scores = []) => {
+    if (!Array.isArray(scores) || scores.length === 0) return 0;
+    const total = scores.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
+    return total / scores.length;
+};
+
+const FacultyDashboard = ({ facultyEmail, facultyAvatar }) => {
     const [evals, setEvals] = useState([]);
+    const [criteriaLookup, setCriteriaLookup] = useState({});
     const [loading, setLoading] = useState(false);
     const [decrypting, setDecrypting] = useState(false);
     const [error, setError] = useState('');
@@ -44,10 +58,22 @@ const FacultyDashboard = ({ facultyEmail }) => {
         setError('');
         
         try {
-            // 1. Fetch the evaluations
-            const res = await apiClient.get('/api/evaluations', {
-                params: { facultyEmail: facultyEmail }
-            });
+            // 1. Fetch evaluations and criteria metadata in parallel.
+            const [res, criteriaRes] = await Promise.all([
+                apiClient.get('/api/evaluations', {
+                    params: { facultyEmail: facultyEmail }
+                }),
+                apiClient.get('/api/public/criteria'),
+            ]);
+
+            const criteriaList = Array.isArray(criteriaRes?.data) ? criteriaRes.data : [];
+            const nextLookup = criteriaList.reduce((acc, item) => {
+                if (item?.id != null && item?.title) {
+                    acc[item.id] = item.title;
+                }
+                return acc;
+            }, {});
+            setCriteriaLookup(nextLookup);
             
             const rawEvals = Array.isArray(res.data) ? res.data : [];
             setEvals(rawEvals);
@@ -84,7 +110,7 @@ const FacultyDashboard = ({ facultyEmail }) => {
 
     const stats = useMemo(() => {
         if (evals.length === 0) return { avg: 0, count: 0 };
-        const sum = evals.reduce((acc, curr) => acc + (curr.rating || 0), 0);
+        const sum = evals.reduce((acc, curr) => acc + computeMetricAverage(curr.scores), 0);
         return {
             avg: (sum / evals.length).toFixed(1),
             count: evals.length
@@ -123,7 +149,7 @@ const FacultyDashboard = ({ facultyEmail }) => {
                                 border: `2px solid ${UA_GOLD}`,
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
                             }}
-                            src="https://www.ua.edu.ph/wp-content/uploads/2023/04/UA-Logo-New.png" // UA Logo URL
+                            src={facultyAvatar || uaLogo}
                         >
                             UA
                         </Avatar>
@@ -144,6 +170,8 @@ const FacultyDashboard = ({ facultyEmail }) => {
                         startIcon={<RefreshIcon />} 
                         variant="contained" 
                         onClick={fetchAndDecryptEvaluations}
+                        disabled={loading || decrypting}
+                        aria-label="Refresh faculty evaluation results"
                         sx={{ 
                             borderRadius: 2, 
                             fontWeight: 800, 
@@ -153,12 +181,13 @@ const FacultyDashboard = ({ facultyEmail }) => {
                             px: 3
                         }}
                     >
-                        Refresh Results
+                        {loading || decrypting ? 'Refreshing...' : 'Refresh Results'}
                     </Button>
                 </Stack>
             </Paper>
 
             {/* KPI Cards */}
+            <Fade in timeout={260}>
             <Grid container spacing={3} sx={{ mb: 4 }}>
                 <Grid item xs={12} sm={6} md={4}>
                     <Card sx={{ borderRadius: 4, height: '100%', border: '1px solid #e2e8f0', transition: '0.3s', '&:hover': { transform: 'translateY(-5px)', boxShadow: '0 12px 24px rgba(0,0,0,0.08)' } }}>
@@ -211,6 +240,20 @@ const FacultyDashboard = ({ facultyEmail }) => {
                     </Card>
                 </Grid>
             </Grid>
+            </Fade>
+
+            {!loading && evals.length > 0 && (
+                <Suspense
+                    fallback={
+                        <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
+                            <Skeleton variant="text" width="35%" height={34} />
+                            <Skeleton variant="rounded" height={260} sx={{ mt: 1.5 }} />
+                        </Paper>
+                    }
+                >
+                    <FacultyAnalyticsCharts evaluations={evals} criteriaLookup={criteriaLookup} />
+                </Suspense>
+            )}
 
             {/* Feedback Feed */}
             <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3, px: 1 }}>
@@ -221,22 +264,54 @@ const FacultyDashboard = ({ facultyEmail }) => {
                 {decrypting && <CircularProgress size={20} sx={{ ml: 2 }} />}
             </Stack>
 
-            {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 3 }}>{error}</Alert>}
+            {error && (
+                <Box sx={{ mb: 3 }}>
+                    <LoadStateCard
+                        icon={<SecurityIcon sx={{ fontSize: 54 }} />}
+                        title="We hit a secure loading issue"
+                        description={`We could not load or decrypt feedback right now. ${error}`}
+                        severity="error"
+                        actionLabel="Retry now"
+                        onAction={fetchAndDecryptEvaluations}
+                        minHeight={190}
+                    />
+                </Box>
+            )}
 
             {loading ? (
-                <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}>
-                    <CircularProgress size={60} thickness={4} sx={{ color: UA_BLUE }} />
-                    <Typography sx={{ mt: 2 }} color="text.secondary" fontWeight={600}>Fetching evaluations...</Typography>
+                <Box sx={{ py: 2 }}>
+                    {/* UI Update: Skeleton loading for smoother perceived performance */}
+                    <Stack spacing={2}>
+                        {[1, 2].map((placeholder) => (
+                            <Card key={placeholder} sx={{ borderRadius: 4, border: '1px solid #f1f5f9' }}>
+                                <Box sx={{ p: 3 }}>
+                                    <Skeleton variant="text" width="40%" height={28} />
+                                    <Skeleton variant="text" width="22%" height={20} />
+                                    <Skeleton variant="rounded" width="100%" height={90} sx={{ mt: 2 }} />
+                                </Box>
+                            </Card>
+                        ))}
+                    </Stack>
                 </Box>
             ) : evals.length === 0 ? (
-                <Paper sx={{ p: 10, textAlign: 'center', borderRadius: 4, border: '1px dashed #e2e8f0', bgcolor: 'white' }}>
-                    <ChatBubbleOutlineIcon sx={{ fontSize: 80, color: '#e2e8f0', mb: 2 }} />
-                    <Typography variant="h5" color="text.secondary" fontWeight={700}>No entries found</Typography>
-                    <Typography variant="body1" color="text.disabled">Your students haven't submitted any evaluations yet.</Typography>
-                </Paper>
+                <Zoom in timeout={220}>
+                <Box>
+                    <LoadStateCard
+                        icon={<ChatBubbleOutlineIcon sx={{ fontSize: 80 }} />}
+                        title="No evaluations yet"
+                        description="Your students have not submitted feedback yet. Use Refresh Results to check for new responses."
+                        actionLabel="Refresh results"
+                        onAction={fetchAndDecryptEvaluations}
+                        minHeight={260}
+                    />
+                </Box>
+                </Zoom>
             ) : (
+                <Fade in timeout={220}>
                 <Stack spacing={2.5}>
-                    {evals.map((ev, index) => (
+                    {evals.map((ev, index) => {
+                        const metricAverage = computeMetricAverage(ev.scores);
+                        return (
                         <Card key={ev.id || index} sx={{ borderRadius: 4, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
                             <Box sx={{ p: 3 }}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
@@ -255,10 +330,10 @@ const FacultyDashboard = ({ facultyEmail }) => {
                                     </Stack>
                                     <Box sx={{ textAlign: 'right' }}>
                                         <Typography variant="h5" fontWeight={900} color={UA_BLUE}>
-                                            {ev.rating}
+                                            {metricAverage.toFixed(1)}
                                             <Typography component="span" variant="caption" sx={{ ml: 0.5 }}>/10</Typography>
                                         </Typography>
-                                        <Rating value={ev.rating / 2} size="small" readOnly />
+                                        <Rating value={metricAverage / 2} size="small" readOnly />
                                     </Box>
                                 </Stack>
                                 
@@ -279,8 +354,10 @@ const FacultyDashboard = ({ facultyEmail }) => {
                                 </Paper>
                             </Box>
                         </Card>
-                    ))}
+                        );
+                    })}
                 </Stack>
+                </Fade>
             )}
         </Box>
     );

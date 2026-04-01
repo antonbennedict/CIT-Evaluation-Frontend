@@ -8,10 +8,10 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
+// Task 4: Axios Interceptor for secure JWT transmission
 apiClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('adminToken');
-  if (token && !config.headers?.Authorization) {
-    config.headers = config.headers || {};
+  if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
