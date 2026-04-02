@@ -14,10 +14,11 @@ import {
   Tabs,
   Typography,
   Zoom,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import LockIcon from '@mui/icons-material/Lock';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { ShieldCheck, Key, User, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   fetchCriteria,
@@ -195,9 +196,32 @@ const AdminDashboard = ({ adminToken }) => {
               <Typography variant="body2" color="text.secondary">Manage encrypted evaluations, professors, criteria, and analytics.</Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Chip icon={<LockIcon />} label="Encrypted by default" color="success" variant="outlined" />
+              <Chip
+                icon={<ShieldCheck size={16} />}
+                label="Encrypted by default"
+                color="success"
+                variant="outlined"
+              />
+
+              {/* Security-related quick actions: Key (rotate/manage keys) and User (manage admins) */}
+              <Tooltip title="Manage keys" placement="bottom">
+                <span>
+                  <IconButton size="small" aria-label="manage-keys">
+                    <Key size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+
+              <Tooltip title="Manage admins" placement="bottom">
+                <span>
+                  <IconButton size="small" aria-label="manage-admins">
+                    <User size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+
               <Button
-                startIcon={<RefreshIcon />}
+                startIcon={<RefreshCw size={16} />}
                 endIcon={isRefreshing ? <CircularProgress size={16} color="inherit" /> : null}
                 variant="outlined"
                 onClick={handleRefresh}

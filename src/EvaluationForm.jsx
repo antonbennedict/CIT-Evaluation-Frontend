@@ -14,7 +14,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SecurityIcon from '@mui/icons-material/Security';
 import CelebrationIcon from '@mui/icons-material/Celebration';
 import { useQuery } from '@tanstack/react-query';
-import { enqueueSnackbar } from 'notistack';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DEFAULT_CRITERIA,
@@ -276,8 +276,8 @@ const EvaluationForm = ({ studentEmail, onSubmitted }) => {
       });
 
       await Promise.all(submissions);
-      setHandshakeStatus('completed');
-      enqueueSnackbar('Success! Assigned faculty evaluations submitted securely.', { variant: 'success' });
+  setHandshakeStatus('completed');
+  toast.success('Success! Assigned faculty evaluations submitted securely.');
       setIsSubmitting(false);
       setShowSuccess(true);
 
@@ -289,7 +289,7 @@ const EvaluationForm = ({ studentEmail, onSubmitted }) => {
         status === 409
           ? 'It looks like this evaluation was already submitted. Duplicate submissions are blocked.'
           : 'Submission failed.';
-      enqueueSnackbar(getApiErrorMessage(err, fallbackMessage), { variant: 'error' });
+      toast.error(getApiErrorMessage(err, fallbackMessage));
     }
   };
 
